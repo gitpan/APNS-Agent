@@ -3,7 +3,7 @@ use 5.010;
 use strict;
 use warnings;
 
-our $VERSION = "0.01";
+our $VERSION = "0.02";
 
 use AnyEvent::APNS;
 use Cache::LRU;
@@ -62,14 +62,16 @@ sub to_app {
             }
             return [400, [], ['BAD REQUEST']] unless $payload;
 
-            if ($self->__apns->connected) {
-                $self->_send($token, $payload);
-                infof "event:payload accepted\ttoken:%s", $token;
-            }
-            else {
-                infof "event:push queue";
-                push @{$self->_queue}, [$token, $payload];
-                $self->_connect_to_apns;
+            for my $t (split /,/, $token) {
+                if ($self->__apns->connected) {
+                    $self->_send($t, $payload);
+                    infof "event:payload accepted\ttoken:%s", $t;
+                }
+                else {
+                    infof "event:push queue";
+                    push @{$self->_queue}, [$t, $payload];
+                    $self->_connect_to_apns;
+                }
             }
             return [200, [], ['Accepted']];
         }
@@ -260,7 +262,7 @@ L<AnyEvent::APNS>
 
 =head1 THANKS
 
-Tnank B<@shin1rosei> that many code of this module is taken from
+Thank B<@shin1rosei> that many code of this module is taken from
 L<https://github.com/shin1rosei/AnyEvent-APNS-Server>.
 
 =head1 LICENSE
