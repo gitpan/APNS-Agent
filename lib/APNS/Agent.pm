@@ -3,7 +3,7 @@ use 5.010;
 use strict;
 use warnings;
 
-our $VERSION = "0.04";
+our $VERSION = "0.05";
 
 use AnyEvent::APNS;
 use Cache::LRU;
@@ -172,16 +172,34 @@ sub _sending {
 sub _send {
     my ($self, $token, $payload) = @_;
 
-    my $identifier = $self->_apns->send(pack("H*", $token) => {
-        aps => $payload,
-    });
-    $self->_sent_cache->set($identifier => {
-        token   => $token,
-        payload => $payload,
-    });
-    $self->_last_sent_at(time);
-    infof "event:send\ttoken:$token\tidentifier:$identifier";
-    $identifier;
+    local $@;
+    my $identifier;
+    eval {
+        $identifier = $self->_apns->send(pack("H*", $token) => {
+            aps => $payload,
+        });
+    };
+
+    if (my $err = $@) {
+        if ($err =~ m!Can't call method "push_write" on an undefined value!) {
+            # AnyEvent::APNS->handle is missing
+            delete $self->{_send_timer};
+            unshift @{ $self->_queue }, [$token, $payload];
+            $self->_connect_to_apns;
+        }
+        else {
+            die $err;
+        }
+    }
+    else {
+        $self->_sent_cache->set($identifier => {
+            token   => $token,
+            payload => $payload,
+        });
+        $self->_last_sent_at(time);
+        infof "event:send\ttoken:$token\tidentifier:$identifier";
+        $identifier;
+    }
 }
 
 sub parse_options {

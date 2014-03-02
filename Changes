@@ -1,5 +1,8 @@
 Revision history for Perl extension APNS-Agent
 
+0.05 2014-03-02T12:03:24Z
+    - fix error handling on send
+
 0.04 2014-03-01T13:08:19Z
     - refactor message queuing way
 
