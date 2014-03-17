@@ -52,6 +52,7 @@
             "Log::Minimal" : "0",
             "Plack::Loader" : "0",
             "Plack::Request" : "0",
+            "Router::Boom::Method" : "0",
             "feature" : "0",
             "perl" : "5.010"
          }
@@ -70,7 +71,7 @@
    "provides" : {
       "APNS::Agent" : {
          "file" : "lib/APNS/Agent.pm",
-         "version" : "0.05"
+         "version" : "0.06"
       }
    },
    "release_status" : "stable",
@@ -84,5 +85,5 @@
          "web" : "https://github.com/Songmu/p5-APNS-Agent"
       }
    },
-   "version" : "0.05"
+   "version" : "0.06"
 }

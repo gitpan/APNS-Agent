@@ -33,7 +33,7 @@ no_index:
 provides:
   APNS::Agent:
     file: lib/APNS/Agent.pm
-    version: 0.05
+    version: 0.06
 requires:
   AnyEvent::APNS: 0
   Cache::LRU: 0
@@ -44,10 +44,11 @@ requires:
   Log::Minimal: 0
   Plack::Loader: 0
   Plack::Request: 0
+  Router::Boom::Method: 0
   feature: 0
   perl: 5.010
 resources:
   bugtracker: https://github.com/Songmu/p5-APNS-Agent/issues
   homepage: https://github.com/Songmu/p5-APNS-Agent
   repository: git://github.com/Songmu/p5-APNS-Agent.git
-version: 0.05
+version: 0.06

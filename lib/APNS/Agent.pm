@@ -3,7 +3,7 @@ use 5.010;
 use strict;
 use warnings;
 
-our $VERSION = "0.05";
+our $VERSION = "0.06";
 
 use AnyEvent::APNS;
 use Cache::LRU;
@@ -11,6 +11,7 @@ use Encode qw/decode_utf8/;
 use JSON::XS;
 use Log::Minimal;
 use Plack::Request;
+use Router::Boom::Method;
 
 use Class::Accessor::Lite::Lazy 0.03 (
     new => 1,
@@ -33,6 +34,7 @@ use Class::Accessor::Lite::Lazy 0.03 (
         _sent_cache         => sub { Cache::LRU->new(size => 10000) },
         _queue              => sub { [] },
         __apns              => '_build_apns',
+        _sent               => sub { 0 },
     },
     rw => [qw/_last_sent_at _disconnect_timer/],
 );
@@ -40,44 +42,66 @@ use Class::Accessor::Lite::Lazy 0.03 (
 sub to_app {
     my $self = shift;
 
+    my $router = Router::Boom::Method->new;
+    $router->add(POST => '/'        => '_do_main');
+    $router->add(GET  => '/monitor' => '_do_monitor');
+
     sub {
         my $env = shift;
+        my ($target_method) = $router->match(@$env{qw/REQUEST_METHOD PATH_INFO/});
+
+        return [404, [], ['NOT FOUND']] unless $target_method;
+
         my $req = Plack::Request->new($env);
-
-        return [404, [], ['NOT FOUND']] unless $req->path_info =~ m!\A/?\z!ms;
-
-        if ($req->method eq 'POST') {
-            my $token = $req->param('token') or return [400, [], ['Bad Request']];
-
-            my $payload;
-            if (my $payload_json = $req->param('payload') ) {
-                state $json_driver = JSON::XS->new->utf8;
-                local $@;
-                my $payload = eval { $json_driver->decode($payload_json) };
-                return [400, [], ['BAD REQUEST']] if $@;
-            }
-            elsif (my $alert = $req->param('alert')) {
-                $payload = +{
-                    alert => decode_utf8($alert),
-                };
-            }
-            return [400, [], ['BAD REQUEST']] unless $payload;
-
-            my @payloads = map {[$_, $payload]} split /,/, $token;
-            push @{$self->_queue}, @payloads;
-
-            infof "event:payload queued\ttoken:%s", $token;
-            if ($self->__apns->connected) {
-                $self->_sending;
-            }
-            else {
-                $self->_connect_to_apns;
-            }
-            return [200, [], ['Accepted']];
-        }
-
-        return [405, [], ['Method Not Allowed']];
+        $self->$target_method($req);
     };
+}
+
+sub _do_main {
+    my ($self, $req) = @_;
+
+    my $token = $req->param('token') or return [400, [], ['Bad Request']];
+
+    my $payload;
+    if (my $payload_json = $req->param('payload') ) {
+        state $json_driver = JSON::XS->new->utf8;
+        local $@;
+        $payload = eval { $json_driver->decode($payload_json) };
+        return [400, [], ['BAD REQUEST']] if $@;
+    }
+    elsif (my $alert = $req->param('alert')) {
+        $payload = +{
+            alert => decode_utf8($alert),
+        };
+    }
+    return [400, [], ['BAD REQUEST']] unless $payload;
+
+    my @payloads = map {[$_, $payload]} split /,/, $token;
+    push @{$self->_queue}, @payloads;
+
+    infof "event:payload queued\ttoken:%s", $token;
+    if ($self->__apns->connected) {
+        $self->_sending;
+    }
+    else {
+        $self->_connect_to_apns;
+    }
+    return [200, [], ['Accepted']];
+}
+
+sub _do_monitor {
+    my ($self, $req) = @_;
+
+    my $result = {
+        sent   => $self->_sent,
+        queued => scalar( @{ $self->_queue } ),
+    };
+    my $body = encode_json($result);
+
+    return [200, [
+        'Content-Type'   => 'application/json; charset=utf-8',
+        'Content-Length' => length($body),
+    ], [$body]];
 }
 
 sub _build_apns {
@@ -198,6 +222,7 @@ sub _send {
         });
         $self->_last_sent_at(time);
         infof "event:send\ttoken:$token\tidentifier:$identifier";
+        $self->{_sent}++;
         $identifier;
     }
 }
